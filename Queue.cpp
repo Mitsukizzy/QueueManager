@@ -21,8 +21,6 @@ unsigned char dequeue_byte(Q *q);
 unsigned int get_front_index();
 unsigned int get_back_index();
 int get_next_free_slot();
-// int get_int_from_chars(unsigned char high_index);
-// void save_header_info(int front, int back, int qID);
 int get_buffer_space();
 void on_out_of_memory();
 void on_illegal_operation();
@@ -66,8 +64,6 @@ Q * create_queue()
         newQueue->qID = qCount;
         printf("Created queue #%d. Front index is %u and back index is %u\n", qCount, newQueue->front, newQueue->back );
 
-        // store Q in data
-        //save_header_info(newQueue->front, newQueue->back, newQueue->qID);
         data[0] = qCount;
 
         return newQueue;
@@ -111,10 +107,6 @@ void enqueue_byte(Q *q, unsigned char b)
             data[q->back] = b;
         }
         printf("1st Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
-
-
-        // Save to header data
-        //save_header_info(q->front, q->back, q->qID);
     }
     else
     {        
@@ -128,9 +120,6 @@ void enqueue_byte(Q *q, unsigned char b)
             q->back -= 1;
             data[q->back] = b;
             printf("2nd Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
-
-            // Save to header data
-            //save_header_info(q->front, q->back, q->qID);
         }
 
         // Space available outside of this queue
@@ -182,13 +171,11 @@ int get_next_free_slot()
     }
 
     int headerLen = 1 + 4 * qCount;
-    //int dataBack = get_int_from_chars(headerLen - 2);
     int dataBack = get_back_index();
     int totalFree = dataBack - headerLen;
 
     Q *q = reinterpret_cast<Q*>(&data[headerLen - 4]);
     printf("GNFS - qID: %u     back: %u     front: %u     q: %u\n", q->qID, q->back, q->front, q );
-    //printf("GNFS - dataBack: %d     total free: %d\n", dataBack, totalFree );
 
     if(totalFree <= 0)
     {
@@ -222,8 +209,6 @@ int get_buffer_space()
 {
     int dataFront = get_front_index();
     int dataBack = get_back_index();
-    // int dataFront = get_int_from_chars(1);
-    // int dataBack = get_int_from_chars(headerLen - 2);
     int nonHeaderSpaceUsed = dataFront - dataBack;
     int equalSpace = MAX_MEMORY / MAX_QUEUES;
     printf("dataBack: %d   nonHeaderSpaceUsed: %d\n", dataBack, nonHeaderSpaceUsed);
@@ -246,26 +231,3 @@ void on_illegal_operation()
 {
     printf("Illegal operation.");
 }
-        
-// int get_int_from_chars(unsigned char low_index)
-// {
-//     int high_index = low_index + 1;
-//     int num = (data[high_index] << 8) + data[low_index];
-//     //printf("GET - INDEX: %d     NUM: %d    dlow: %u     dhigh: %u \n", low_index, num, data[low_index], data[high_index] );
-//     return num;
-// }
-
-// void set_chars_from_int(int num, int header_index)
-// {
-//     data[header_index] = num & 0xFF; // low: masking for the least significant byte
-//     data[header_index + 1] = (num >> 8) & 0xFF; // high
-//     //printf("SET - INDEX: %d     NUM: %d    LOW: %u      HIGH: %u   \n", header_index, num, data[header_index], data[header_index + 1]);
-// }
-
-// void save_header_info(int front, int back, int qID)
-// {
-//     int iFront = 1 + 4 * (qID - 1);
-//     int iBack = iFront + 2;
-//     set_chars_from_int(front, iFront);
-//     set_chars_from_int(back, iBack);
-// }
