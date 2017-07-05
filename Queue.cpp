@@ -8,9 +8,10 @@ unsigned char data[MAX_MEMORY]; // Container for queue memory storage
 
 struct Q
 {
-    unsigned int front : 12;
-    unsigned int back : 12;
-    unsigned int qNum : 6;
+    unsigned int isEmpty: 1;    // Set to 1 if empty, 0 if not
+    unsigned int front : 11;    // Able to store values up to 2048 (our array indices)
+    unsigned int back : 11;
+    unsigned int qID : 6;       // Queue identifier, up to 64
 };
 
 Q * create_queue();
@@ -21,7 +22,7 @@ unsigned int get_front_index();
 unsigned int get_back_index();
 int get_next_free_slot();
 // int get_int_from_chars(unsigned char high_index);
-// void save_header_info(int front, int back, int qNum);
+// void save_header_info(int front, int back, int qID);
 int get_buffer_space();
 void on_out_of_memory();
 void on_illegal_operation();
@@ -34,7 +35,6 @@ int main()
     enqueue_byte(q0, 0);
     enqueue_byte(q0, 1);
     Q *q1 = create_queue();
-    printf("Q#%d\n", q0->qNum);
     enqueue_byte(q1, 3);
     enqueue_byte(q0, 2);
     enqueue_byte(q1, 4);
@@ -60,13 +60,14 @@ Q * create_queue()
     {
         Q *newQueue = reinterpret_cast<Q*>(&data[1 + 4 * qCount]);
         qCount++;
+        newQueue->isEmpty = 1;
         newQueue->front = get_next_free_slot();
         newQueue->back = newQueue->front;
-        newQueue->qNum = qCount;
+        newQueue->qID = qCount;
         printf("Created queue #%d. Front index is %u and back index is %u\n", qCount, newQueue->front, newQueue->back );
 
         // store Q in data
-        //save_header_info(newQueue->front, newQueue->back, newQueue->qNum);
+        //save_header_info(newQueue->front, newQueue->back, newQueue->qID);
         data[0] = qCount;
 
         return newQueue;
@@ -94,17 +95,26 @@ Q * create_queue()
 void enqueue_byte(Q *q, unsigned char b)
 {
     int nextFreeSlot = get_next_free_slot();
-    //printf("Q#%d\n", q->qNum);
+    //printf("Q#%d\n", q->qID);
 
     // Most recent queue added and space free
-    if(q->qNum == data[0] && nextFreeSlot >= 1)
-    {
-        data[q->back] = b;
-        printf("1st Enqueue: Added %u to queue #%d index %d\n", b, q->qNum, q->back );
-        q->back -= 1;
+    if(q->qID == data[0] && nextFreeSlot >= 1)
+    {        
+        if(q->isEmpty)
+        {
+            q->isEmpty = 0; // No longer empty
+            data[q->back] = b;
+        }
+        else
+        {
+            q->back -= 1;   
+            data[q->back] = b;
+        }
+        printf("1st Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
+
 
         // Save to header data
-        //save_header_info(q->front, q->back, q->qNum);
+        //save_header_info(q->front, q->back, q->qID);
     }
     else
     {        
@@ -115,12 +125,12 @@ void enqueue_byte(Q *q, unsigned char b)
 
         if(freeQueueSlots >= 1)
         {            
-            data[q->back] = b;
-            printf("2nd Enqueue: Added %u to queue #%d index %d\n", b, q->qNum, q->back );
             q->back -= 1;
+            data[q->back] = b;
+            printf("2nd Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
 
             // Save to header data
-            //save_header_info(q->front, q->back, q->qNum);
+            //save_header_info(q->front, q->back, q->qID);
         }
 
         // Space available outside of this queue
@@ -145,17 +155,15 @@ unsigned char dequeue_byte(Q *q)
     else
     {
         unsigned char b = data[q->front];
-        printf("Removing %u from queue #%d index %d\n", b, q->qNum, q->front);
+        printf("Removing %u from queue #%d back index %d\n", b, q->qID, q->back);
 
         // Shift all elements in the queue one step to the front (right)
-        for(int i = q->back; i < q->front; i++)
+        for(int i = q->front; i > q->back; i--)
         {
-            data[i+1] = data[i];
+            data[i] = data[i-1];
+            printf("i = %d, replacing %u with %u\n", i, data[i+1], data[i]);
         }
         q->back += 1;
-
-        // Save to header data
-       // save_header_info(q->front, q->back, q->qNum);
         return b;
     }
 }
@@ -179,7 +187,7 @@ int get_next_free_slot()
     int totalFree = dataBack - headerLen;
 
     Q *q = reinterpret_cast<Q*>(&data[headerLen - 4]);
-    printf("GNFS - qNum: %u     back: %u     front: %u     q: %u\n", q->qNum, q->back, q->front, q );
+    printf("GNFS - qID: %u     back: %u     front: %u     q: %u\n", q->qID, q->back, q->front, q );
     //printf("GNFS - dataBack: %d     total free: %d\n", dataBack, totalFree );
 
     if(totalFree <= 0)
@@ -188,7 +196,7 @@ int get_next_free_slot()
     }
 
     int buffer = get_buffer_space();
-    //printf("Buffer: %d\n", buffer);
+    printf("Buffer: %d\n", buffer);
     if(totalFree > buffer)
     {
         return dataBack - buffer;
@@ -217,7 +225,14 @@ int get_buffer_space()
     // int dataFront = get_int_from_chars(1);
     // int dataBack = get_int_from_chars(headerLen - 2);
     int nonHeaderSpaceUsed = dataFront - dataBack;
+    int equalSpace = MAX_MEMORY / MAX_QUEUES;
     printf("dataBack: %d   nonHeaderSpaceUsed: %d\n", dataBack, nonHeaderSpaceUsed);
+
+    if(nonHeaderSpaceUsed < equalSpace)
+    {
+        return equalSpace;
+    }
+
     return nonHeaderSpaceUsed / data[0];
 }
 
@@ -247,9 +262,9 @@ void on_illegal_operation()
 //     //printf("SET - INDEX: %d     NUM: %d    LOW: %u      HIGH: %u   \n", header_index, num, data[header_index], data[header_index + 1]);
 // }
 
-// void save_header_info(int front, int back, int qNum)
+// void save_header_info(int front, int back, int qID)
 // {
-//     int iFront = 1 + 4 * (qNum - 1);
+//     int iFront = 1 + 4 * (qID - 1);
 //     int iBack = iFront + 2;
 //     set_chars_from_int(front, iFront);
 //     set_chars_from_int(back, iBack);
