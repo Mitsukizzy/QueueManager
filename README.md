@@ -4,11 +4,18 @@
 ### Create a manager with a set of functions that can handle a variable number of byte queues, which each have a variable length, in a small, fixed amount of memory.
 
 All storage other than local variables in function must be in the following array.
-```unsigned char data[2048]```
+```
+unsigned char data[2048]
+```
 
 The code cannot call malloc or other heap management routines. No more than 64 queues will be created at once.
 
-
+### Execution Instructions
+The second line will depend on your Operating System. I run a PC using Cygwin.
+```
+g++ Queue.cpp -o queue
+./queue.exe 
+```
 
 ### My Approach
 Given the small amount of space, I thought about how to best keep track of the queues while utilizing the Q type, which could be whatever I wanted. I refer to the information in the Q struct as header info, which includes things such as the front and back index of the queue it refers to. I store this header info in ascending order, starting from the start (left side) of the data array. Everything bookkeeping related, such as the headers, total queue count, and free space count, is kept on the lower end of the data array. The lower end is always kept sequential and contiguous with no gaps. On the other hand, the stored bytes which the queues track and manage are positioned at the end (right side) of the array. 
