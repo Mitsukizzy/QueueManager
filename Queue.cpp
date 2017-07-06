@@ -14,11 +14,15 @@
     Memory organization in bytes
     -----------------------------------
     0               : Queue Count
-    1 - 4           : Header info for q0
-    5 - 8           : Header info for q1
-    9 - 12          : Header info for q2
-    13 - 256        : Remaining headers (up to q63)
-    257 - 1948      : Data for queues
+    1 - 2           : Space Free Count
+    3 - 6           : Header info for q0
+    7 - 10          : Header info for q1
+    11 - 14         : Header info for q2
+    15 - 258        : Remaining headers (up to q63)
+    259 - 2047      : Data for queues (storage area)
+    -----------------------------------
+    Storage Area is right aligned, example below
+    -----------------------------------
     1949 - 1981     : Data for q2
     1982 - 2014     : Data for q1
     2015 - 2047     : Data for q0
@@ -82,12 +86,14 @@ int main()
     destroy_queue(q1); 
 }
 
+// Creating a new queue requires 5 bytes: 
+// 4 bytes for header + (at least) 1 byte for storage 
 Q * create_queue()
 {
     int qCount = data[0];
 
     // Check if there is space for a new queue
-    if( qCount < MAX_QUEUES )
+    if(qCount < MAX_QUEUES && get_space_free() >= 5)
     {
         Q *newQueue = reinterpret_cast<Q*>(&data[3 + 4 * qCount]);
         qCount++;
@@ -96,7 +102,6 @@ Q * create_queue()
         newQueue->back = newQueue->front;
         newQueue->id = qCount;
 
-        // Reserved 5 bytes: 4 bytes for header + 1 byte for storage 
         update_space_free(5); 
         data[0] = qCount;
         return newQueue;
