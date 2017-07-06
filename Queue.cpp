@@ -1,34 +1,58 @@
+/*
+    Sucker Punch Programming Test
+    Implementation by Izzy Benavente
+    July 2017
+*/
+
 #define MAX_MEMORY 2048
 #define MAX_QUEUES 64
 
 #include <stdio.h> // For printf
 
+/*
+    Memory organization in bytes
+    -----------------------------------
+    0               : Queue Count
+    1 - 4           : Header info for q0
+    5 - 8           : Header info for q1
+    9 - 12          : Header info for q2
+    13 - 256        : Remaining headers (up to q63)
+    257 - 1948      : Data for queues
+    1949 - 1981     : Data for q2
+    1982 - 2014     : Data for q1
+    2015 - 2047     : Data for q0
+*/
 
 unsigned char data[MAX_MEMORY]; // Container for queue memory storage
 
 struct Q
 {
+    unsigned int front : 12;    // Front index of a queue 
+    unsigned int back : 12;     // Back index of a queue
+    unsigned int id : 6;        // Queue identifier, up to 64
     unsigned int isEmpty: 1;    // Set to 1 if empty, 0 if not
-    unsigned int front : 11;    // Able to store values up to 2048 (our array indices)
-    unsigned int back : 11;
-    unsigned int qID : 6;       // Queue identifier, up to 64
+    unsigned int unused : 1;
 };
 
+// Required
 Q * create_queue();
 void destroy_queue(Q *q);
 void enqueue_byte(Q *q, unsigned char b);
 unsigned char dequeue_byte(Q *q);
+// Helpers
 unsigned int get_front_index();
 unsigned int get_back_index();
-int get_next_free_slot();
+int get_new_queue_front();
 int get_buffer_space();
+// Errors
 void on_out_of_memory();
 void on_illegal_operation();
 
 int main()
 {
-    printf("You can do this! \n" );
-    data[0] = 0; // Reserve the first data slot to maintain queue count
+    // Init the queue count
+    data[0] = 0; 
+
     Q *q0 = create_queue();
     enqueue_byte(q0, 0);
     enqueue_byte(q0, 1);
@@ -38,15 +62,15 @@ int main()
     enqueue_byte(q1, 4);
     printf("%d", dequeue_byte(q0));
     printf("%d\n", dequeue_byte(q0));
-    // enqueue_byte(q0, 5);
-    // enqueue_byte(q1, 6);
-    // printf("%d", dequeue_byte(q0));
-    // printf("%d\n", dequeue_byte(q0));
-    // destroy_queue(q0);
-    // printf("%d", dequeue_byte(q1));
-    // printf("%d", dequeue_byte(q1));
-    // printf("%d\n", dequeue_byte(q1));   
-    // destroy_queue(q1); 
+    enqueue_byte(q0, 5);
+    enqueue_byte(q1, 6);
+    printf("%d", dequeue_byte(q0));
+    printf("%d\n", dequeue_byte(q0));
+    destroy_queue(q0);
+    printf("%d", dequeue_byte(q1));
+    printf("%d", dequeue_byte(q1));
+    printf("%d\n", dequeue_byte(q1));   
+    destroy_queue(q1); 
 }
 
 Q * create_queue()
@@ -59,13 +83,12 @@ Q * create_queue()
         Q *newQueue = reinterpret_cast<Q*>(&data[1 + 4 * qCount]);
         qCount++;
         newQueue->isEmpty = 1;
-        newQueue->front = get_next_free_slot();
+        newQueue->front = get_new_queue_front();
         newQueue->back = newQueue->front;
-        newQueue->qID = qCount;
+        newQueue->id = qCount;
         printf("Created queue #%d. Front index is %u and back index is %u\n", qCount, newQueue->front, newQueue->back );
 
         data[0] = qCount;
-
         return newQueue;
     }
     else
@@ -74,39 +97,41 @@ Q * create_queue()
     }
 }
 
-// void destroy_queue(Q *q)
-// {
-//     // Check if any queues exist
-//     if( data[0] <= 0 )
-//     {
-//         on_illegal_operation();
-//     }
+void destroy_queue(Q *q)
+{
+    // Check if any queues exist
+    if( data[0] <= 0 )
+    {
+        on_illegal_operation();
+    }
 
-//     // Move all headers one left
+    int numQueuesToShift = data[0] - q->id;
+    printf("Destroying Q#%d  front: %d   back: %d\n", q->id, q->front, q->back);
 
-//     // Decrement queue count
-//     data[0] = data[0] - 1;
-// }
+    // Move all following headers left
+    for(int i = 0; i < numQueuesToShift; i++)
+    {
+        q++;
+        q->id -= 1; 
+    }
+
+    // Decrement queue count
+    data[0] -= 1;
+}
 
 void enqueue_byte(Q *q, unsigned char b)
 {
-    int nextFreeSlot = get_next_free_slot();
-    //printf("Q#%d\n", q->qID);
+    int dataBack = get_back_index();
+    int headerLen = 1 + 4 * data[0];
+    bool midSpaceOpen = ((dataBack - headerLen) >= 1) ? true : false;
 
-    // Most recent queue added and space free
-    if(q->qID == data[0] && nextFreeSlot >= 1)
-    {        
-        if(q->isEmpty)
+    // If q is most recent queue added (leftmost queue in storage area)
+    if(q->id == data[0])
+    {
+        if(!midSpaceOpen)
         {
-            q->isEmpty = 0; // No longer empty
-            data[q->back] = b;
+            // TODO: SLIDE ALL RIGHT
         }
-        else
-        {
-            q->back -= 1;   
-            data[q->back] = b;
-        }
-        printf("1st Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
     }
     else
     {        
@@ -115,80 +140,114 @@ void enqueue_byte(Q *q, unsigned char b)
         int nextQFront = nextQ->front; 
         int freeQueueSlots = q->back - nextQFront;
 
-        if(freeQueueSlots >= 1)
-        {            
-            q->back -= 1;
-            data[q->back] = b;
-            printf("2nd Enqueue: Added %u to queue #%d index %d\n", b, q->qID, q->back );
-        }
-
-        // Space available outside of this queue
-        if(nextFreeSlot >= 1)
-        {
-            // TODO: Slide all following queues left
-        }
-        else
+        if(freeQueueSlots <= 0 && !midSpaceOpen)
         {
             on_out_of_memory();
         }
+        else if(freeQueueSlots <= 0 && midSpaceOpen)
+        {
+            // To make space, slide the data of all following queues one space left
+            printf("Slide all left");
+            int numQueuesToShift = data[0] - q->id;
+            int shiftAmount = get_buffer_space();
+
+            for(int i = 0; i < numQueuesToShift; i++)
+            {
+                for(int i = nextQ->front; i > nextQ->back; i--)
+                {
+                    data[i] = data[i-shiftAmount];
+                    //printf("i = %d, replacing %u with %u\n", i, data[i+1], data[i]);
+                }
+                nextQ->front -= shiftAmount;
+                nextQ->back -= shiftAmount;
+                nextQ++;
+            }
+        }
     }
+    
+    if(q->isEmpty)
+    {
+        q->isEmpty = 0; // No longer empty
+        data[q->back] = b;
+    }
+    else
+    {
+        q->back -= 1;
+        data[q->back] = b;
+    }
+    printf("1st Enqueue: Added %u to queue #%d index %d\n", b, q->id, q->back );
 }
 
 unsigned char dequeue_byte(Q *q)
 {
-    // Check if any queues exist
-    if( data[0] <= 0 )
+    // Verify that at least one queue exists
+    if(data[0] <= 0)
     {
         on_illegal_operation();
     }
     else
     {
         unsigned char b = data[q->front];
-        printf("Removing %u from queue #%d back index %d\n", b, q->qID, q->back);
 
         // Shift all elements in the queue one step to the front (right)
         for(int i = q->front; i > q->back; i--)
         {
             data[i] = data[i-1];
-            printf("i = %d, replacing %u with %u\n", i, data[i+1], data[i]);
         }
-        q->back += 1;
+
+        if(q->front == q->back)
+        {
+            q->isEmpty = 1; // Now empty after element removal
+        }
+        else
+        {
+            q->back += 1;
+        }
         return b;
     }
 }
 
-// Helper Functions
-
-// Returns the next free slot
-int get_next_free_slot()
+// Determines the best index for a new queue to start at
+int get_new_queue_front()
 {    
     int qCount = data[0];
 
+    // Give the first queue the last (rightmost) data slot
     if(qCount <= 0)
     {
-        // Only the first data slot is in use
-        return MAX_MEMORY - 1; // Give the rightmost data slot
+        return MAX_MEMORY - 1; 
     }
 
     int headerLen = 1 + 4 * qCount;
     int dataBack = get_back_index();
-    int totalFree = dataBack - headerLen;
+    int midSpaceOpen = dataBack - headerLen;
 
-    Q *q = reinterpret_cast<Q*>(&data[headerLen - 4]);
-    printf("GNFS - qID: %u     back: %u     front: %u     q: %u\n", q->qID, q->back, q->front, q );
-
-    if(totalFree <= 0)
+    // Check if there's space for new queue 
+    // Need 4 bytes for header and at least 1 byte for storage
+    if(midSpaceOpen >= 5)
     {
-        return -1;
+        return dataBack - get_buffer_space();
     }
+    else
+    { 
+        // Make space by sliding all queue storage right
+        printf("Slide all right");
+        Q *q = reinterpret_cast<Q*>(&data[1]);
+        Q *nextQ = q + 4;
 
-    int buffer = get_buffer_space();
-    printf("Buffer: %d\n", buffer);
-    if(totalFree > buffer)
-    {
-        return dataBack - buffer;
+        for(int i = 0; i < qCount; i++)
+        {
+            int shift = q->back - nextQ->front;
+            for(int i = nextQ->front; i > nextQ->back; i--)
+            {
+                data[i+shift] = data[i];
+                //printf("i = %d, replacing %u with %u\n", i, data[i+1], data[i]);
+            }
+            q = nextQ;
+            nextQ++;
+        }
+        return get_back_index() - 1;
     }
-    return dataBack;
 }
 
 unsigned int get_front_index()
@@ -207,21 +266,23 @@ unsigned int get_back_index()
 // Returns the average queue length to give most recent queue some buffer space
 int get_buffer_space()
 {
+    int headerLen = 4 * data[0] + 1;
     int dataFront = get_front_index();
     int dataBack = get_back_index();
-    int nonHeaderSpaceUsed = dataFront - dataBack;
-    int equalSpace = MAX_MEMORY / MAX_QUEUES;
-    printf("dataBack: %d   nonHeaderSpaceUsed: %d\n", dataBack, nonHeaderSpaceUsed);
+    int midSpaceOpen = dataBack - headerLen;
+    int weightedBuffer = midSpaceOpen * ( (float)data[0] / MAX_QUEUES );
+    int evenBuffer = midSpaceOpen / data[0];
 
-    if(nonHeaderSpaceUsed < equalSpace)
+    //printf("dataBack: %d   midSpaceOpen: %d    weightedBuffer: %d\n", dataBack, midSpaceOpen, weightedBuffer);
+
+    if(weightedBuffer < evenBuffer)
     {
-        return equalSpace;
+        return weightedBuffer;
     }
-
-    return nonHeaderSpaceUsed / data[0];
+    return evenBuffer;
 }
 
-
+// These functions will be provided. 
 void on_out_of_memory()
 {
     printf("Out of memory.");
